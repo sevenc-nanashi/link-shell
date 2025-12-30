@@ -37,15 +37,21 @@ kernel [2020/12/09 15:03:07]  （アップデート後の正しいファーム�
 ### LinkShellの使い方
 
 ```
-❯ ruby linkshell.rb -h
+❯ : ruby linkshell.rb -h
 Usage: linkshell.rb [options]
     -t, --target TARGET              Your LinkStation's IP address
     -p, --password PASSWORD          Your LinkStation's admin password
     -i, --interval SECONDS           Interval between commands
     -T, --tries N                    Number of tries for each command
+        --stop                       Stop the LinkShell if already running
     -v, --verbose                    Run verbosely
-    -h, --help                       Show this help message
 ```
+
+この後、`/etc/sshd_config`を書き換えたり、`/root/.ssh/authorized_keys`に公開鍵を追加したりして、ssh環境を整えてください。
+
+> [!WARNING]
+> このツールはかなり脆弱です（認証なしでシェルにアクセスできるようになります）。
+> sshdをセットアップしたら、直ちにこのツールを停止してください。
 
 ## 仕組み
 
