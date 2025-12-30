@@ -28,6 +28,9 @@ parse =
       Integer,
       "Number of tries for each command"
     ) { |v| options[:tries] = v }
+    opts.on("--stop", "Stop the LinkShell if already running") do
+      options[:stop] = true
+    end
     opts.on("-v", "--verbose", "Run verbosely") { |v| options[:verbose] = v }
     opts.on("-h", "--help", "Show this help message") do
       puts opts
@@ -48,24 +51,34 @@ end
 
 commands = []
 
-shell_port = 11511
+shell_port = 11_511
 payload = <<~PAYLOAD
   PORT=#{shell_port}
 
-  if [ -f /tmp/nc_shell_pid ]; then
-    OLD_PID=$(cat /tmp/nc_shell_pid)
-    kill $OLD_PID 2>/dev/null
-  fi
+  case "$1" in
+    run)
+      echo "$$" > /tmp/nc_shell_pid
 
-  echo "$$" > /tmp/nc_shell_pid
-
-  busybox nc -lp $PORT -e /bin/sh -c 'echo Successfully connected to LinkShell!; PS1="\\u@\\h:\\w\\$ " ; export PS1; exec /bin/sh -i'
-
-  rm -f /tmp/nc_shell_pid
+      while true; do
+        busybox nc -lp $PORT -e /bin/sh -c 'echo Successfully connected to LinkShell!; PS1="\\u@\\h:\\w\\$ " ; export PS1; exec /bin/sh -i'
+      done
+      ;;
+    stop)
+      if [ -f /tmp/nc_shell_pid ]; then
+        kill "$(cat /tmp/nc_shell_pid)" && rm -f /tmp/nc_shell_pid
+        echo "LinkShell stopped."
+      else
+        echo "LinkShell is not running."
+      fi
+      ;;
+    *)
+      echo "Usage: $0 {run|stop}"
+      ;;
+  esac
 PAYLOAD
 
 shellname = "/tmp/linkshell_#{Digest::MD5.hexdigest(payload)}.sh"
-puts "Generated shell script will be installed at #{shellname}"
+puts "Shell Path: #{shellname}"
 
 commands << "rm -f #{shellname}.tmp"
 commands << "rm -f /tmp/linkshell_*"
@@ -82,7 +95,6 @@ payload.lines.each do |line|
 end
 commands << "chmod +x #{shellname}.tmp"
 commands << "mv #{shellname}.tmp #{shellname}"
-commands << "nohup sh #{shellname} >/dev/null 2>&1 &"
 
 # as interactive mode does not run more than one command, we spam the `-c` option
 real_commands =
@@ -120,6 +132,38 @@ else
   puts is_installed
   raise "Failed to check if remote shell is installed"
 end
-puts "Starting remote shell..."
-sleep 2
-system "nc #{options[:target]} #{shell_port}"
+if options[:stop]
+  puts "Stopping remote shell..."
+else
+  puts "Starting remote shell..."
+  start_command =
+    "java -jar ./external/acp-commander/acp_commander.jar -t #{options[:target]} -ip #{options[:target]} -pw #{options[:password]} -c #{("nohup sh " + shellname + " run &").shellescape}"
+  if options[:verbose]
+    system start_command
+  else
+    system start_command, out: File::NULL, err: File::NULL
+  end
+  if $?.exitstatus == 0
+    puts "Remote shell started."
+  else
+    raise "Failed to start remote shell."
+  end
+  sleep 2
+  puts "Connect to the remote shell using netcat:"
+  puts "  nc #{options[:target]} #{shell_port}"
+  puts "Press enter to stop the remote shell..."
+  STDIN.gets
+  puts "Stopping remote shell..."
+end
+stop_command =
+  "java -jar ./external/acp-commander/acp_commander.jar -t #{options[:target]} -ip #{options[:target]} -pw #{options[:password]} -c #{("sh " + shellname + " stop").shellescape}"
+if options[:verbose]
+  system stop_command
+else
+  system stop_command, out: File::NULL, err: File::NULL
+end
+if $?.exitstatus == 0
+  puts "Remote shell stopped."
+else
+  raise "Failed to stop remote shell."
+end
