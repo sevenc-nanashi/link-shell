@@ -1,0 +1,3 @@
+[submodule "external/acp-commander"]
+	path = external/acp-commander
+	url = https://github.com/Stonie/acp-commander
